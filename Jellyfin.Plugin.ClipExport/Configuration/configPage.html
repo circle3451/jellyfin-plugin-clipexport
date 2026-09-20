@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Clip Export</title>
+</head>
+<body>
+    <div id="ClipExportConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="ClipExportConfigForm">
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="CutMode">Cut mode</label>
+                        <select is="emby-select" id="CutMode" name="CutMode" class="emby-select-withcolor emby-select">
+                            <option value="copy">Copy (lossless, fast)</option>
+                            <option value="exact">Exact (re-encode, frame-accurate)</option>
+                        </select>
+                        <div class="fieldDescription">Copy starts at the nearest keyframe before the in-point, so the clip may begin a second or two early. Exact re-encodes to start precisely, which is far slower.</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="MaxClipSeconds">Maximum clip length (seconds)</label>
+                        <input id="MaxClipSeconds" name="MaxClipSeconds" type="number" is="emby-input" min="1" />
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EncodePreset">x264 preset (exact mode)</label>
+                        <input id="EncodePreset" name="EncodePreset" type="text" is="emby-input" />
+                        <div class="fieldDescription">ultrafast, superfast, veryfast, faster, fast, medium...</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EncodeCrf">CRF (exact mode)</label>
+                        <input id="EncodeCrf" name="EncodeCrf" type="number" is="emby-input" min="0" max="51" />
+                        <div class="fieldDescription">Lower is better quality and larger. 18 is visually transparent.</div>
+                    </div>
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var ClipExportConfig = {
+                pluginUniqueId: '95254fa2-e04d-4718-a529-e32c5ef4a170'
+            };
+
+            document.querySelector('#ClipExportConfigPage')
+                .addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(ClipExportConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#CutMode').value = config.CutMode;
+                        document.querySelector('#MaxClipSeconds').value = config.MaxClipSeconds;
+                        document.querySelector('#EncodePreset').value = config.EncodePreset;
+                        document.querySelector('#EncodeCrf').value = config.EncodeCrf;
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#ClipExportConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(ClipExportConfig.pluginUniqueId).then(function (config) {
+                        config.CutMode = document.querySelector('#CutMode').value;
+                        config.MaxClipSeconds = parseInt(document.querySelector('#MaxClipSeconds').value, 10);
+                        config.EncodePreset = document.querySelector('#EncodePreset').value;
+                        config.EncodeCrf = parseInt(document.querySelector('#EncodeCrf').value, 10);
+                        ApiClient.updatePluginConfiguration(ClipExportConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>

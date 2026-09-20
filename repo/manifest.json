@@ -1,0 +1,21 @@
+[
+    {
+        "guid": "95254fa2-e04d-4718-a529-e32c5ef4a170",
+        "name": "Clip Export",
+        "description": "Adds Set In / Set Out / Export buttons to the video player OSD. The server cuts the selected range out of the original file with its own ffmpeg and sends it to the browser as a download.",
+        "overview": "Export clips from movies and episodes to your Downloads folder",
+        "owner": "circle3451",
+        "category": "General",
+        "imageUrl": "",
+        "versions": [
+            {
+                "version": "1.0.0.0",
+                "changelog": "See README.",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/circle3451/jellyfin-plugin-clipexport/main/repo/clipexport_1.0.0.0.zip",
+                "checksum": "fcc6131abaf382df0e432c91b61fa36e",
+                "timestamp": "2026-09-20T18:41:19.151Z"
+            }
+        ]
+    }
+]

@@ -1,0 +1,17 @@
+---
+name: "Clip Export"
+guid: "95254fa2-e04d-4718-a529-e32c5ef4a170"
+version: "1.0.0.0"
+targetAbi: "12.1.0.0"
+framework: "net10.0"
+overview: "Export clips from movies and episodes straight to your Downloads folder"
+description: >
+  Adds Set In / Set Out / Export buttons to the video player OSD. The server
+  cuts the selected range out of the original file with its own ffmpeg and
+  sends it to the browser as a download.
+category: "General"
+owner: "circle3451"
+artifacts:
+- "Jellyfin.Plugin.ClipExport.dll"
+changelog: >
+  Initial release.
