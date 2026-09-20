@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Api;
+using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
@@ -32,6 +33,10 @@ namespace Jellyfin.Plugin.ClipExport;
 [Route("ClipExport")]
 public class ClipExportController : ControllerBase
 {
+    /// <summary>Age at which an orphaned clip file is swept.</summary>
+    private const int StaleFileHours = 6;
+
+    private readonly IApplicationPaths _appPaths;
     private readonly ILibraryManager _libraryManager;
     private readonly IMediaSourceManager _mediaSourceManager;
     private readonly IMediaEncoder _mediaEncoder;
@@ -40,16 +45,19 @@ public class ClipExportController : ControllerBase
     /// <summary>
     /// Initializes a new instance of the <see cref="ClipExportController"/> class.
     /// </summary>
+    /// <param name="appPaths">Instance of the <see cref="IApplicationPaths"/> interface.</param>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
     /// <param name="mediaSourceManager">Instance of the <see cref="IMediaSourceManager"/> interface.</param>
     /// <param name="mediaEncoder">Instance of the <see cref="IMediaEncoder"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ClipExportController}"/> interface.</param>
     public ClipExportController(
+        IApplicationPaths appPaths,
         ILibraryManager libraryManager,
         IMediaSourceManager mediaSourceManager,
         IMediaEncoder mediaEncoder,
         ILogger<ClipExportController> logger)
     {
+        _appPaths = appPaths;
         _libraryManager = libraryManager;
         _mediaSourceManager = mediaSourceManager;
         _mediaEncoder = mediaEncoder;
@@ -122,9 +130,24 @@ public class ClipExportController : ControllerBase
             ? "mkv"
             : sourceExt;
 
+        /*
+         * Jellyfin's own temp directory rather than the system one, in a
+         * subfolder of ours so a sweep can never touch anything else.
+         */
+        var workDir = Path.Combine(_appPaths.TempDirectory, "clip-export");
+        Directory.CreateDirectory(workDir);
+
+        /*
+         * DeleteOnClose handles the normal path and a client that
+         * disconnects mid-download (both verified). What it cannot cover
+         * is the server being killed while a handle is open -- the file
+         * then survives. Sweep anything left behind by such a crash.
+         */
+        SweepStaleFiles(workDir);
+
         var tempPath = Path.Combine(
-            Path.GetTempPath(),
-            string.Format(CultureInfo.InvariantCulture, "jf-clip-{0:N}.{1}", Guid.NewGuid(), outputExt));
+            workDir,
+            string.Format(CultureInfo.InvariantCulture, "clip-{0:N}.{1}", Guid.NewGuid(), outputExt));
 
         /*
          * The video codec decides whether the hvc1 retag below applies.
@@ -360,6 +383,42 @@ public class ClipExportController : ControllerBase
         return ts.TotalHours >= 1
             ? string.Format(CultureInfo.InvariantCulture, "{0}-{1:D2}-{2:D2}", (int)ts.TotalHours, ts.Minutes, ts.Seconds)
             : string.Format(CultureInfo.InvariantCulture, "{0:D2}-{1:D2}", ts.Minutes, ts.Seconds);
+    }
+
+    /*
+     * Remove clips left behind by an earlier crash. Only files older
+     * than the cutoff are touched, so a download in flight right now is
+     * never deleted out from under itself.
+     */
+    private void SweepStaleFiles(string dir)
+    {
+        try
+        {
+            var cutoff = DateTime.UtcNow.AddHours(-StaleFileHours);
+            foreach (var file in Directory.EnumerateFiles(dir, "clip-*"))
+            {
+                try
+                {
+                    if (System.IO.File.GetLastWriteTimeUtc(file) < cutoff)
+                    {
+                        System.IO.File.Delete(file);
+                        _logger.LogInformation("Removed stale clip file {Path}", file);
+                    }
+                }
+                catch (IOException)
+                {
+                    // In use or vanished; leave it for the next sweep.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Not ours to delete.
+                }
+            }
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Nothing to sweep.
+        }
     }
 
     private void TryDelete(string path)

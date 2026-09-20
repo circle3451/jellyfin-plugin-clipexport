@@ -107,7 +107,7 @@ The server has the file on local disk and a real ffmpeg. None of these limits ap
 ## Notes
 
 - The endpoint sits behind Jellyfin's `Download` policy, so users need download permission.
-- The clip is written to the server's temp directory and deleted automatically once the download completes.
+- **No files are left behind.** The clip is written to a `clip-export` folder inside Jellyfin's own temp directory and deleted the moment the download finishes — verified that this holds both for a normal download and for a client that disconnects mid-transfer. The one case it cannot cover is the server being killed while a download is open; a leftover file then survives, so the plugin also sweeps anything in that folder older than 6 hours on each export. Files still in flight, and anything not written by the plugin, are never touched.
 - Subtitles are dropped from exported clips.
 - In exact mode only the first video and audio track are exported.
 - A WebM source in exact mode is written as `.mkv`, since WebM cannot carry H.264. In copy mode the source container is always kept.

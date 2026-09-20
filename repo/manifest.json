@@ -9,6 +9,14 @@
         "imageUrl": "",
         "versions": [
             {
+                "version": "1.0.2.0",
+                "changelog": "See README.",
+                "targetAbi": "12.1.0.0",
+                "sourceUrl": "https://raw.githubusercontent.com/circle3451/jellyfin-plugin-clipexport/main/repo/clipexport_1.0.2.0.zip",
+                "checksum": "52f57cc45f72e09a5240d3fc6bbac003",
+                "timestamp": "2026-09-20T19:04:06.018Z"
+            },
+            {
                 "version": "1.0.1.0",
                 "changelog": "See README.",
                 "targetAbi": "12.1.0.0",
