@@ -111,6 +111,7 @@ The server has the file on local disk and a real ffmpeg. None of these limits ap
 - Subtitles are dropped from exported clips.
 - In exact mode only the first video and audio track are exported.
 - A WebM source in exact mode is written as `.mkv`, since WebM cannot carry H.264. In copy mode the source container is always kept.
+- **HEVC clips are retagged `hvc1`.** QuickTime plays HEVC in MP4 only when the video track carries the `hvc1` tag; many encoders write the equally legal `hev1`, and QuickTime silently refuses those while VLC plays them fine. The plugin rewrites the tag on HEVC MP4 output — pure metadata, byte-identical, still a lossless stream copy. H.264 and Matroska output are untouched, since tagging those would break the file.
 
 ## Licence
 

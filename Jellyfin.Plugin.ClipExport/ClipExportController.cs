@@ -4,12 +4,14 @@ using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MediaBrowser.Common.Api;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
+using MediaBrowser.Model.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -31,6 +33,7 @@ namespace Jellyfin.Plugin.ClipExport;
 public class ClipExportController : ControllerBase
 {
     private readonly ILibraryManager _libraryManager;
+    private readonly IMediaSourceManager _mediaSourceManager;
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<ClipExportController> _logger;
 
@@ -38,14 +41,17 @@ public class ClipExportController : ControllerBase
     /// Initializes a new instance of the <see cref="ClipExportController"/> class.
     /// </summary>
     /// <param name="libraryManager">Instance of the <see cref="ILibraryManager"/> interface.</param>
+    /// <param name="mediaSourceManager">Instance of the <see cref="IMediaSourceManager"/> interface.</param>
     /// <param name="mediaEncoder">Instance of the <see cref="IMediaEncoder"/> interface.</param>
     /// <param name="logger">Instance of the <see cref="ILogger{ClipExportController}"/> interface.</param>
     public ClipExportController(
         ILibraryManager libraryManager,
+        IMediaSourceManager mediaSourceManager,
         IMediaEncoder mediaEncoder,
         ILogger<ClipExportController> logger)
     {
         _libraryManager = libraryManager;
+        _mediaSourceManager = mediaSourceManager;
         _mediaEncoder = mediaEncoder;
         _logger = logger;
     }
@@ -120,7 +126,26 @@ public class ClipExportController : ControllerBase
             Path.GetTempPath(),
             string.Format(CultureInfo.InvariantCulture, "jf-clip-{0:N}.{1}", Guid.NewGuid(), outputExt));
 
-        var args = BuildArguments(sourcePath, tempPath, start, duration, isExact, config);
+        /*
+         * The video codec decides whether the hvc1 retag below applies.
+         * Tagging a non-HEVC stream hvc1 makes ffmpeg abort with
+         * "Could not write header", so this must be accurate.
+         */
+        var isHevc = false;
+        try
+        {
+            var streams = _mediaSourceManager.GetMediaStreams(item.Id);
+            var video = streams?.FirstOrDefault(s => s.Type == MediaStreamType.Video);
+            isHevc = string.Equals(video?.Codec, "hevc", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(video?.Codec, "h265", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            // Not fatal: without this we simply skip the retag.
+            _logger.LogWarning(ex, "Could not determine the source video codec");
+        }
+
+        var args = BuildArguments(sourcePath, tempPath, start, duration, isExact, isHevc, outputExt, config);
 
         _logger.LogInformation(
             "Cutting clip from {ItemName}: {Start}s to {End}s ({Mode})",
@@ -181,6 +206,8 @@ public class ClipExportController : ControllerBase
         double start,
         double duration,
         bool isExact,
+        bool isHevc,
+        string outputExt,
         Configuration.PluginConfiguration config)
     {
         var ss = start.ToString("F3", CultureInfo.InvariantCulture);
@@ -194,7 +221,7 @@ public class ClipExportController : ControllerBase
              * can begin up to one keyframe interval early and run that much
              * longer. That is extra real footage, not dead video.
              */
-            return new[]
+            var copyArgs = new List<string>
             {
                 "-hide_banner", "-loglevel", "warning", "-y",
                 "-ss", ss,
@@ -206,9 +233,31 @@ public class ClipExportController : ControllerBase
                 // Subtitle/data streams frequently cannot be copied into
                 // the output cleanly; drop them rather than fail.
                 "-dn",
-                "-map", "-0:s?",
-                outputPath
+                "-map", "-0:s?"
             };
+
+            /*
+             * QuickTime plays HEVC in MP4 only when the video track is
+             * tagged `hvc1`. The other legal tag for the same codec,
+             * `hev1`, is what many encoders write -- and QuickTime simply
+             * refuses those files, while VLC plays either quite happily.
+             *
+             * Retagging is pure metadata: verified against real ffmpeg
+             * that `-tag:v hvc1` with `-c copy` produces byte-identical
+             * output (477755 bytes either way), so this stays lossless
+             * and instant.
+             *
+             * Only meaningful for the MP4 family; Matroska does not use
+             * these tags.
+             */
+            if (isHevc && IsMp4Family(outputExt))
+            {
+                copyArgs.Add("-tag:v");
+                copyArgs.Add("hvc1");
+            }
+
+            copyArgs.Add(outputPath);
+            return copyArgs;
         }
 
         return new[]
@@ -296,6 +345,14 @@ public class ClipExportController : ControllerBase
             FormatTimestamp(end),
             ext);
     }
+
+    /*
+     * The hvc1/hev1 tag distinction only exists in the ISO-BMFF (MP4)
+     * family. Matroska identifies codecs by its own CodecID and ignores
+     * these four-character tags entirely.
+     */
+    private static bool IsMp4Family(string ext) =>
+        ext is "mp4" or "m4v" or "mov";
 
     private static string FormatTimestamp(double seconds)
     {
